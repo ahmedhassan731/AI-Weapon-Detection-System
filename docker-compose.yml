@@ -1,0 +1,14 @@
+services:
+  weapon-detection:
+    build: .
+    container_name: weapon_detection_app
+    ports:
+      - "7860:7860"
+    volumes:
+      # Host folder : Container folder (data persistence)
+      - ./outputs:/app/outputs
+      - ./logs:/app/logs
+      - ./models:/app/models
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
