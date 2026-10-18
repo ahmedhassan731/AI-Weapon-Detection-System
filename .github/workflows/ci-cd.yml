@@ -1,86 +1,134 @@
+
 name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: ["main", "master"]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: ["main", "master"]
   workflow_dispatch:
 
 jobs:
-  # =============================================================
-  # Job 1: CI - Test & Verification
-  # =============================================================
+  # Job 1: Python, YOLO model, and inference tests
   test:
-    name: 🧪 Run Tests & Model Verification
+    name: Run Tests & Model Verification
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📥 Checkout Repository
-        uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v5
 
-      - name: 🐍 Set up Python 3.11
-        uses: actions/setup-python@v5
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
-          cache: "pip"
+          cache: pip
 
-      - name: 📦 Install OpenCV System Dependencies
+      - name: Install OpenCV System Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libgl1 libglib2.0-0
 
-      - name: 📦 Install Python Dependencies
+      - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install --no-cache-dir torch torchvision \
+            --index-url https://download.pytorch.org/whl/cpu
           pip install -r requirements.txt
 
-      - name: 🔍 Syntax & Compilation Check
+      - name: Check Python Syntax
         run: |
           python -m py_compile app.py gradio_app.py
 
-      - name: 🧠 Test YOLO Model Loading & Inference
+      - name: Test YOLO Model and Inference
         run: |
-          python -c "
+          python - <<'PY'
           from pathlib import Path
           from PIL import Image
           from ultralytics import YOLO
           import gradio_app
 
-          print('[*] Testing weights & model...')
-          weights = gradio_app.ensure_model_weights(Path('models/best.pt'))
+          print("Testing model weights...")
+          weights = gradio_app.ensure_model_weights(
+              Path("models/best.pt")
+          )
           model = YOLO(str(weights))
-          print(f'[✓] Loaded Model Classes: {model.names}')
+          print("Model classes:", model.names)
 
-          print('[*] Testing image inference...')
-          img = Image.open('test_images/sample.jpg')
-          annotated, status, df = gradio_app.detect_image(img, 0.40)
-          print(f'[✓] Inference result: {status}')
-          print('[✓] All CI verification checks passed!')
-          "
+          print("Testing image inference...")
+          image = Image.open("test_images/sample.jpg").convert("RGB")
+          annotated, status, df = gradio_app.detect_image(
+              image, 0.40
+          )
 
-  # =============================================================
-  # Job 2: CD - Docker Image Build & Verification
-  # =============================================================
+          assert annotated is not None, "No annotated image returned"
+          print("Inference status:", status)
+          print("CI tests passed!")
+          PY
+
+  # Job 2: Build Docker image and run the container
   docker:
-    name: 🐳 Build & Test Docker Image
+    name: Build & Test Docker Container
     needs: test
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📥 Checkout Repository
-        uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v5
 
-      - name: 🔧 Set up Docker Buildx
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: 🏗️ Build Docker Image
-        uses: docker/build-push-action@v5
+      - name: Build Docker Image
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           push: false
+          load: true
           tags: weapon-detection-app:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Start Docker Container
+        run: |
+          docker run -d \
+            --name weapon-detection-test \
+            -p 7860:7860 \
+            weapon-detection-app:latest
+
+      - name: Test Application Inside Container
+        run: |
+          set -eu
+
+          for i in $(seq 1 60); do
+            if ! docker inspect \
+              -f '{{.State.Running}}' \
+              weapon-detection-test | grep -q true; then
+              echo "Container stopped unexpectedly."
+              docker logs weapon-detection-test
+              exit 1
+            fi
+
+            if curl --fail --silent \
+              http://127.0.0.1:7860/ \
+              -o /dev/null; then
+              echo "SUCCESS: Application responded on port 7860."
+              exit 0
+            fi
+
+            sleep 2
+          done
+
+          echo "ERROR: Application did not respond within 120 seconds."
+          docker logs weapon-detection-test
+          exit 1
+
+      - name: Show Container Logs
+        if: always()
+        run: docker logs weapon-detection-test || true
+
+      - name: Clean Up Docker Container
+        if: always()
+        run: |
+          docker rm -f weapon-detection-test || true
