@@ -1,0 +1,56 @@
+# ==========================================
+# Python Cache & Bytecode
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# ==========================================
+# Virtual Environments (Bohot baray folders)
+# ==========================================
+env/
+venv/
+.venv/
+env*/
+
+# ==========================================
+# Output Detections & Heavy Media (Videos/Images)
+# ==========================================
+outputs/detections/*
+!outputs/detections/.gitkeep
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.wmv
+
+# ==========================================
+# Runtime Logs & Temp Detections
+# ==========================================
+logs/*.csv
+*.log
+!logs/.gitkeep
+
+# ==========================================
+# Gradio & Ultralytics Cache
+# ==========================================
+flagged/
+runs/
+.cache/
+huggingface_cache/
+yolov8*.pt
+
+# (Optional: Agar models/best.pt ko GitHub par nahi bhejna aur auto-download karwana ho, toh neeche wali line un-comment karein)
+# models/*.pt
+
+# ==========================================
+# IDE & System Files
+# ==========================================
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
